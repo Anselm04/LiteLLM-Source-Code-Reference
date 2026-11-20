@@ -59,6 +59,7 @@ jobs:
                   del expected[p]
           assert 'LICENSE' in expected
           index=b''.join(f'{mode} {oid}\t'.encode()+os.fsencode(p)+b'\0' for p,(mode,kind,oid) in expected.items())
+          git('read-tree','--empty')
           git('update-index','-z','--index-info',input=index)
           staged={p:[v[0],'blob',v[1]] for p,v in parse(git('ls-files','--stage','-z')).items()}
           missing=sorted(set(expected)-set(staged))
@@ -69,10 +70,23 @@ jobs:
           Path('.trillionai/FILE_INVENTORY.json').write_text(json.dumps(report,indent=2)+'\n')
           Path('.trillionai/SOURCE_PROVENANCE.txt').write_text(f'Upstream: https://github.com/BerriAI/litellm\nRevision: {rev}\nOriginal tree: {tree}\n')
           PY
-          git add -f .trillionai/FILE_INVENTORY.json .trillionai/SOURCE_PROVENANCE.txt
+          git add -f .github/workflows/import-reference.yml .trillionai/FILE_INVENTORY.json .trillionai/SOURCE_PROVENANCE.txt
           git config user.name "TrillionAI Reference Import"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git diff --cached --quiet || git commit -m "Import and hash-verify LiteLLM source"
           git push origin HEAD:main
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)"
+          python3 - <<'PY'
+          import subprocess as s, json, os
+          def tree(ref):
+              return {os.fsdecode(p):m.decode().split() for m,p in (x.split(b'\t',1) for x in s.check_output(['git','ls-tree','-rz',ref]).split(b'\0') if x)}
+          report=json.load(open('.trillionai/FILE_INVENTORY.json'))
+          upstream=tree(report['upstream_commit'])
+          expected={p:v for p,v in upstream.items() if p not in report['excluded_paths']}
+          remote=tree('FETCH_HEAD')
+          assert len(expected)==report['verified_source_files']
+          assert all(remote.get(p)==v for p,v in expected.items())
+          assert set(remote)-set(expected)=={'.github/workflows/import-reference.yml','.trillionai/FILE_INVENTORY.json','.trillionai/SOURCE_PROVENANCE.txt'}
+          print('Remote tree verified:',len(expected),'files; zero missing or mismatched')
+          PY
