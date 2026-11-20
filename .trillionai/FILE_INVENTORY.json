@@ -264,8 +264,6 @@
   },
   "missing_paths": [],
   "mismatched_paths": [],
-  "extra_paths": [
-    ".github/workflows/import-reference.yml"
-  ],
+  "extra_paths": [],
   "scope": "Tracked Git blobs only; no third-party submodule contents or history."
 }
